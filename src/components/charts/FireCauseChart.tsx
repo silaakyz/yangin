@@ -15,11 +15,6 @@ const COLORS = [
   'hsl(var(--primary))',
 ];
 
-// Custom CartesianGrid with forwardRef to fix the warning
-const CustomCartesianGrid = React.forwardRef<SVGElement>((props, ref) => (
-  <CartesianGrid {...props} />
-));
-
 const FireCauseChart = React.forwardRef<HTMLDivElement, FireCauseChartProps>(({ business }, ref) => {
   const { data = [], isLoading } = useFireCauseData(business?.name);
 
@@ -32,7 +27,7 @@ const FireCauseChart = React.forwardRef<HTMLDivElement, FireCauseChartProps>(({ 
       <div className="h-[220px]">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={isLoading ? [] : data} margin={{ top: 10, right: 10, left: -10, bottom: 40 }}>
-            <CustomCartesianGrid key="grid" strokeDasharray="3 3" stroke="hsl(var(--border))" />
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
             <XAxis 
               dataKey="cause" 
               tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
@@ -62,5 +57,7 @@ const FireCauseChart = React.forwardRef<HTMLDivElement, FireCauseChartProps>(({ 
     </div>
   );
 });
+
+FireCauseChart.displayName = 'FireCauseChart';
 
 export default FireCauseChart;
