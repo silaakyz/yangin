@@ -6,6 +6,7 @@ import { useBusinesses } from '@/hooks/useSupabaseDashboard';
 
 const Index = () => {
   const [selectedDistrict, setSelectedDistrict] = useState<string | null>(null);
+  const [selectedYear, setSelectedYear] = useState<number>(2024);
   const { data: businesses = [], isLoading, error } = useBusinesses();
 
   return (
@@ -30,6 +31,8 @@ const Index = () => {
             <Dashboard 
               businesses={businesses}
               selectedDistrict={selectedDistrict} 
+              selectedYear={selectedYear}
+              onYearChange={setSelectedYear}
               isLoading={isLoading}
               errorMessage={error?.message}
             />

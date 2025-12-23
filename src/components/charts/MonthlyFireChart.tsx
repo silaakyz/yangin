@@ -1,39 +1,21 @@
-import { useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Flame } from 'lucide-react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { Business } from '@/types/forest';
 import { useMonthlyFireData } from '@/hooks/useSupabaseDashboard';
 
 interface MonthlyFireChartProps {
   business?: Business | null;
+  selectedYear?: number;
 }
 
-const availableYears = [2023, 2024, 2025];
-
-const MonthlyFireChart = ({ business }: MonthlyFireChartProps) => {
-  const [selectedYear, setSelectedYear] = useState<number>(2023);
+const MonthlyFireChart = ({ business, selectedYear = 2024 }: MonthlyFireChartProps) => {
   const { data = [], isLoading } = useMonthlyFireData(business?.id, selectedYear);
 
   return (
     <div className="bg-card rounded-xl shadow-lg p-4 h-full animate-fade-in">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Flame className="h-5 w-5 text-fire-high" />
-          <h3 className="font-semibold text-foreground">Aylık Yangın Grafiği</h3>
-        </div>
-        <Select value={selectedYear.toString()} onValueChange={(val) => setSelectedYear(Number(val))}>
-          <SelectTrigger className="w-24 h-8 text-sm">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {availableYears.map((year) => (
-              <SelectItem key={year} value={year.toString()}>
-                {year}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div className="flex items-center gap-2 mb-4">
+        <Flame className="h-5 w-5 text-fire-high" />
+        <h3 className="font-semibold text-foreground">Aylık Yangın Grafiği ({selectedYear})</h3>
       </div>
       <div className="h-[220px]">
         <ResponsiveContainer width="100%" height="100%">
