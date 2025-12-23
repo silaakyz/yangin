@@ -36,11 +36,11 @@ const monthAliases = [
   ["aralık", "aralik", "december"],
 ];
 
-const yearTable: Record<number, string> = {
-  2023: "Yangin_2023",
-  2024: "Yangin_2024",
-  2025: "Yangin_2025",
-};
+const yearTable = {
+  2023: "yangin_2023",
+  2024: "yangin_2024",
+  2025: "yangin_2025",
+} as const;
 
 // Hard mapping isletme_ad -> districtId used by the map UI
 const districtMap: Record<string, string> = {
@@ -73,31 +73,25 @@ const normalizeDistrictId = (name?: string | null) => {
     .replace(/[üÜ]/g, "u");
 };
 
-const supabaseFetch = async <T>(promise: Promise<{ data: T | null; error: any }>): Promise<T> => {
-  const { data, error } = await promise;
-  if (error) throw error;
-  return (data as T) ?? ([] as unknown as T);
-};
-
 export const useBusinesses = () =>
   useQuery({
     queryKey: ["businesses"],
     queryFn: async (): Promise<Business[]> => {
-      const [isletmeler, aracAsimi, tehlike, araclar] = await Promise.all([
-        supabaseFetch(
-          supabase.from("Isletme").select(`
-            isletme_id,
-            isletme_ad
-          `)
-        ),
-        supabaseFetch(supabase.from("isletme_arac_asimi_view").select("*")),
-        supabaseFetch(supabase.from("isletme_tehlike_siralama_view").select("*")),
-        supabaseFetch(
-          supabase
-            .from("Isletme_arac")
-            .select("isletme_id, adet, Arac(arac_tur_adi)")
-        ),
+      const [isletmelerRes, aracAsimiRes, tehlikeRes, araclarRes] = await Promise.all([
+        supabase.from("isletme").select("isletme_id, isletme_ad"),
+        supabase.from("isletme_arac_asimi_view").select("*"),
+        supabase.from("isletme_tehlike_siralama_view").select("*"),
+        supabase.from("isletme_arac").select("isletme_id, adet, arac_tur_id"),
       ]);
+
+      const isletmeler = isletmelerRes.data ?? [];
+      const aracAsimi = aracAsimiRes.data ?? [];
+      const tehlike = tehlikeRes.data ?? [];
+      const araclar = araclarRes.data ?? [];
+
+      // Get arac types
+      const aracTypesRes = await supabase.from("arac").select("arac_tur_id, arac_tur_adi");
+      const aracTypes = aracTypesRes.data ?? [];
 
       return isletmeler.map((row) => {
         const name = row.isletme_ad ?? `İşletme ${row.isletme_id}`;
@@ -106,10 +100,13 @@ export const useBusinesses = () =>
         const vehicleTypes =
           araclar
             .filter((a) => a.isletme_id === row.isletme_id)
-            .map((a) => ({
-              type: a.arac?.arac_tur_adi ?? "Araç",
-              count: Number(a.adet ?? 0),
-            })) ?? [];
+            .map((a) => {
+              const aracType = aracTypes.find((t) => t.arac_tur_id === a.arac_tur_id);
+              return {
+                type: aracType?.arac_tur_adi ?? "Araç",
+                count: Number(a.adet ?? 0),
+              };
+            }) ?? [];
 
         return {
           id: String(row.isletme_id),
@@ -128,8 +125,8 @@ export const useVehicleData = () =>
   useQuery({
     queryKey: ["vehicle-data"],
     queryFn: async (): Promise<VehicleData[]> => {
-      const data = await supabaseFetch(supabase.from("isletme_arac_asimi_view").select("*"));
-      return data.map((row) => ({
+      const { data } = await supabase.from("isletme_arac_asimi_view").select("*");
+      return (data ?? []).map((row) => ({
         businessName: (row.isletme_ad ?? "İşletme").replace(" Orman İşletmesi", ""),
         totalVehicles: Number(row.isletme_toplam_arac ?? 0),
         usedVehicles: Number(row.yanginda_kullanilan_arac ?? 0),
@@ -142,8 +139,8 @@ export const useDangerRankingData = () =>
   useQuery({
     queryKey: ["danger-ranking"],
     queryFn: async (): Promise<DangerRankingData[]> => {
-      const data = await supabaseFetch(supabase.from("isletme_tehlike_siralama_view").select("*"));
-      return data
+      const { data } = await supabase.from("isletme_tehlike_siralama_view").select("*");
+      return (data ?? [])
         .map((row) => {
           const level = dangerMap[row.tehlike_turu ?? "Düşük"] ?? "low";
           const scoreMap = { low: 25, medium: 50, high: 75, critical: 100 };
@@ -161,12 +158,14 @@ export const useMonthlyFireData = (businessId?: string, year: number = 2023) =>
   useQuery({
     queryKey: ["monthly-fire", businessId, year],
     queryFn: async (): Promise<MonthlyFireData[]> => {
-      const table = yearTable[year];
+      const tableKey = year as keyof typeof yearTable;
+      const table = yearTable[tableKey];
       if (!table) return monthLabels.map((m) => ({ month: m, count: 0 }));
-      const data = await supabaseFetch(
-        supabase.from(table).select("yangin_ay, isletme_id")
-      );
-      const filtered = businessId ? data.filter((d) => String(d.isletme_id) === businessId) : data;
+      
+      const { data } = await supabase.from(table).select("yangin_ay, isletme_id");
+      const allData = data ?? [];
+      const filtered = businessId ? allData.filter((d) => String(d.isletme_id) === businessId) : allData;
+      
       return monthLabels.map((label, idx) => {
         const aliases = monthAliases[idx] ?? [];
         const count = filtered.filter((f) => {
@@ -185,10 +184,9 @@ export const useYearlyFireData = (businessId?: string) =>
     queryFn: async (): Promise<YearlyFireData[]> => {
       const results = await Promise.all(
         Object.entries(yearTable).map(async ([yearStr, table]) => {
-          const data = await supabaseFetch(
-            supabase.from(table).select("isletme_id")
-          );
-          const filtered = businessId ? data.filter((d) => String(d.isletme_id) === businessId) : data;
+          const { data } = await supabase.from(table).select("isletme_id");
+          const allData = data ?? [];
+          const filtered = businessId ? allData.filter((d) => String(d.isletme_id) === businessId) : allData;
           return { year: Number(yearStr), count: filtered.length };
         })
       );
@@ -200,10 +198,9 @@ export const useTreeTypeData = (businessName?: string) =>
   useQuery({
     queryKey: ["tree-type", businessName],
     queryFn: async (): Promise<TreeTypeData[]> => {
-      const data = await supabaseFetch(
-        supabase.from("tehlikeli_yangin_agac_view").select("*")
-      );
-      const filtered = businessName ? data.filter((d) => d.isletme_ad === businessName) : data;
+      const { data } = await supabase.from("tehlikeli_yangin_agac_view").select("*");
+      const allData = data ?? [];
+      const filtered = businessName ? allData.filter((d) => d.isletme_ad === businessName) : allData;
       return filtered.map((row) => ({
         treeType: row.agac_tur ?? "Bilinmiyor",
         count: Number(row.yangin_sayisi ?? 0),
@@ -215,14 +212,12 @@ export const useFireCauseData = (businessName?: string) =>
   useQuery({
     queryKey: ["fire-cause", businessName],
     queryFn: async (): Promise<FireCauseData[]> => {
-      const data = await supabaseFetch(
-        supabase.from("isletme_yangin_nedenleri_view").select("*")
-      );
-      const filtered = businessName ? data.filter((d) => d.isletme_ad === businessName) : data;
+      const { data } = await supabase.from("isletme_yangin_nedenleri_view").select("*");
+      const allData = data ?? [];
+      const filtered = businessName ? allData.filter((d) => d.isletme_ad === businessName) : allData;
       return filtered.map((row) => ({
         cause: row.yangin_neden ?? "Bilinmiyor",
         count: Number(row.yangin_sayisi ?? 0),
       }));
     },
   });
-
