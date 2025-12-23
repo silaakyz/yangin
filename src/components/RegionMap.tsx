@@ -1,5 +1,4 @@
-import { useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { districts, businesses } from '@/data/mockData';
@@ -18,11 +17,14 @@ const dangerColors = {
   critical: { bg: 'bg-fire-critical', hex: '#ef4444' },
 };
 
-// Custom marker icon based on danger level
+const getDistrictDanger = (districtId: string): 'low' | 'medium' | 'high' | 'critical' => {
+  const business = businesses.find(b => b.districtId === districtId);
+  return business?.dangerLevel || 'low';
+};
+
 const createCustomIcon = (danger: 'low' | 'medium' | 'high' | 'critical', isSelected: boolean) => {
   const color = dangerColors[danger].hex;
-  const size = isSelected ? 40 : 30;
-  const borderWidth = isSelected ? 4 : 2;
+  const size = isSelected ? 36 : 28;
   
   return L.divIcon({
     className: 'custom-marker',
@@ -31,16 +33,16 @@ const createCustomIcon = (danger: 'low' | 'medium' | 'high' | 'critical', isSele
         width: ${size}px;
         height: ${size}px;
         background-color: ${color};
-        border: ${borderWidth}px solid white;
+        border: 3px solid white;
         border-radius: 50%;
         box-shadow: 0 2px 8px rgba(0,0,0,0.3);
         display: flex;
         align-items: center;
         justify-content: center;
         ${danger === 'critical' ? 'animation: pulse 2s infinite;' : ''}
-        ${isSelected ? 'transform: scale(1.2); box-shadow: 0 0 15px ' + color + ';' : ''}
+        ${isSelected ? 'box-shadow: 0 0 15px ' + color + ';' : ''}
       ">
-        <svg xmlns="http://www.w3.org/2000/svg" width="${size * 0.5}" height="${size * 0.5}" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg xmlns="http://www.w3.org/2000/svg" width="${size * 0.5}" height="${size * 0.5}" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/>
           <circle cx="12" cy="10" r="3"/>
         </svg>
@@ -48,29 +50,15 @@ const createCustomIcon = (danger: 'low' | 'medium' | 'high' | 'critical', isSele
     `,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -size / 2],
   });
 };
 
-// Component to handle map center changes
-const MapController = ({ selectedDistrict }: { selectedDistrict: string | null }) => {
-  const map = useMap();
-  
-  useEffect(() => {
-    if (selectedDistrict) {
-      const district = districts.find(d => d.id === selectedDistrict);
-      if (district) {
-        map.flyTo(district.latLng, 11, { duration: 0.5 });
-      }
-    } else {
-      // Center on the region (Bursa area)
-      map.flyTo([40.2, 29.3], 9, { duration: 0.5 });
-    }
-  }, [selectedDistrict, map]);
-  
-  return null;
-};
-
 const RegionMap = ({ selectedDistrict, onDistrictSelect }: RegionMapProps) => {
+  const mapRef = useRef<L.Map | null>(null);
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const markersRef = useRef<L.Marker[]>([]);
+
   const groupedDistricts = districts.reduce((acc, district) => {
     if (!acc[district.province]) {
       acc[district.province] = [];
@@ -79,13 +67,80 @@ const RegionMap = ({ selectedDistrict, onDistrictSelect }: RegionMapProps) => {
     return acc;
   }, {} as Record<string, typeof districts>);
 
-  const getDistrictDanger = (districtId: string): 'low' | 'medium' | 'high' | 'critical' => {
-    const business = businesses.find(b => b.districtId === districtId);
-    return business?.dangerLevel || 'low';
-  };
+  // Initialize map
+  useEffect(() => {
+    if (!mapContainerRef.current || mapRef.current) return;
 
-  // Center coordinates for the region
-  const centerPosition: [number, number] = [40.2, 29.3];
+    const map = L.map(mapContainerRef.current, {
+      center: [40.2, 29.3],
+      zoom: 9,
+      scrollWheelZoom: true,
+    });
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    }).addTo(map);
+
+    mapRef.current = map;
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, []);
+
+  // Update markers
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Remove old markers
+    markersRef.current.forEach(marker => marker.remove());
+    markersRef.current = [];
+
+    // Add new markers
+    districts.forEach((district) => {
+      const danger = getDistrictDanger(district.id);
+      const isSelected = selectedDistrict === district.id;
+      const business = businesses.find(b => b.districtId === district.id);
+
+      const marker = L.marker(district.latLng, {
+        icon: createCustomIcon(danger, isSelected),
+      });
+
+      const dangerText = danger === 'low' ? 'Düşük' : danger === 'medium' ? 'Orta' : danger === 'high' ? 'Yüksek' : 'Kritik';
+      
+      marker.bindPopup(`
+        <div style="font-size: 14px;">
+          <p style="font-weight: bold; margin: 0 0 4px 0;">${district.name}</p>
+          <p style="color: #666; margin: 0 0 4px 0;">${district.province}</p>
+          ${business ? `<p style="margin: 0;">Tehlike: <strong>${dangerText}</strong></p>` : ''}
+        </div>
+      `);
+
+      marker.on('click', () => {
+        onDistrictSelect(district.id);
+      });
+
+      marker.addTo(map);
+      markersRef.current.push(marker);
+    });
+  }, [selectedDistrict, onDistrictSelect]);
+
+  // Handle selected district change
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (selectedDistrict) {
+      const district = districts.find(d => d.id === selectedDistrict);
+      if (district) {
+        map.flyTo(district.latLng, 11, { duration: 0.5 });
+      }
+    } else {
+      map.flyTo([40.2, 29.3], 9, { duration: 0.5 });
+    }
+  }, [selectedDistrict]);
 
   return (
     <div className="bg-card rounded-xl shadow-lg p-4 h-full">
@@ -101,57 +156,12 @@ const RegionMap = ({ selectedDistrict, onDistrictSelect }: RegionMapProps) => {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.6; }
           }
-          .leaflet-container {
-            height: 100%;
-            width: 100%;
-            border-radius: 0.5rem;
-          }
           .custom-marker {
-            background: transparent;
-            border: none;
+            background: transparent !important;
+            border: none !important;
           }
         `}</style>
-        <MapContainer
-          center={centerPosition}
-          zoom={9}
-          scrollWheelZoom={true}
-          style={{ height: '100%', width: '100%' }}
-        >
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
-          <MapController selectedDistrict={selectedDistrict} />
-          
-          {districts.map((district) => {
-            const danger = getDistrictDanger(district.id);
-            const isSelected = selectedDistrict === district.id;
-            const business = businesses.find(b => b.districtId === district.id);
-            
-            return (
-              <Marker
-                key={district.id}
-                position={district.latLng}
-                icon={createCustomIcon(danger, isSelected)}
-                eventHandlers={{
-                  click: () => onDistrictSelect(district.id),
-                }}
-              >
-                <Popup>
-                  <div className="text-sm">
-                    <p className="font-bold">{district.name}</p>
-                    <p className="text-muted-foreground">{district.province}</p>
-                    {business && (
-                      <p className="mt-1">
-                        Tehlike: <span className="font-medium capitalize">{danger === 'low' ? 'Düşük' : danger === 'medium' ? 'Orta' : danger === 'high' ? 'Yüksek' : 'Kritik'}</span>
-                      </p>
-                    )}
-                  </div>
-                </Popup>
-              </Marker>
-            );
-          })}
-        </MapContainer>
+        <div ref={mapContainerRef} className="h-full w-full rounded-lg" />
       </div>
 
       {/* Province Sections */}
