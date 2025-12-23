@@ -6,6 +6,7 @@ import YearlyFireChart from './charts/YearlyFireChart';
 import FireCauseChart from './charts/FireCauseChart';
 import BusinessInfo from './BusinessInfo';
 import type { Business } from '@/types/forest';
+import { useRealtimeSubscription } from '@/hooks/useSupabaseDashboard';
 
 interface DashboardProps {
   businesses: Business[];
@@ -15,7 +16,10 @@ interface DashboardProps {
 }
 
 const Dashboard = ({ businesses, selectedDistrict, isLoading, errorMessage }: DashboardProps) => {
-  const business = selectedDistrict 
+  // Enable realtime updates
+  useRealtimeSubscription();
+  
+  const business = selectedDistrict
     ? businesses.find(b => b.districtId === selectedDistrict)
     : null;
 

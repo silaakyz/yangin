@@ -1,5 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useEffect } from "react";
 import type {
   Business,
   DangerRankingData,
@@ -221,3 +222,66 @@ export const useFireCauseData = (businessName?: string) =>
       }));
     },
   });
+
+// Realtime subscription hook for auto-refreshing data
+export const useRealtimeSubscription = () => {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('db-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'yangin_2023' },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['monthly-fire'] });
+          queryClient.invalidateQueries({ queryKey: ['yearly-fire'] });
+          queryClient.invalidateQueries({ queryKey: ['tree-type'] });
+          queryClient.invalidateQueries({ queryKey: ['fire-cause'] });
+          queryClient.invalidateQueries({ queryKey: ['danger-ranking'] });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'yangin_2024' },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['monthly-fire'] });
+          queryClient.invalidateQueries({ queryKey: ['yearly-fire'] });
+          queryClient.invalidateQueries({ queryKey: ['tree-type'] });
+          queryClient.invalidateQueries({ queryKey: ['fire-cause'] });
+          queryClient.invalidateQueries({ queryKey: ['danger-ranking'] });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'yangin_2025' },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['monthly-fire'] });
+          queryClient.invalidateQueries({ queryKey: ['yearly-fire'] });
+          queryClient.invalidateQueries({ queryKey: ['tree-type'] });
+          queryClient.invalidateQueries({ queryKey: ['fire-cause'] });
+          queryClient.invalidateQueries({ queryKey: ['danger-ranking'] });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'isletme' },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['businesses'] });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'isletme_arac' },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['businesses'] });
+          queryClient.invalidateQueries({ queryKey: ['vehicle-data'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+};
