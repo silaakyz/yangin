@@ -59,6 +59,13 @@ export interface VehicleData {
   excess: number;
 }
 
+export interface VehicleTypeData {
+  vehicleType: string;
+  mevcut: number;
+  kullanilan: number;
+  asim: number;
+}
+
 export interface DangerRankingData {
   businessName: string;
   dangerScore: number;

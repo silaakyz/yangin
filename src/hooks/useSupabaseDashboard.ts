@@ -8,6 +8,7 @@ import type {
   MonthlyFireData,
   TreeTypeData,
   VehicleData,
+  VehicleTypeData,
   YearlyFireData,
 } from "@/types/forest";
 
@@ -126,13 +127,77 @@ export const useVehicleData = () =>
   useQuery({
     queryKey: ["vehicle-data"],
     queryFn: async (): Promise<VehicleData[]> => {
-      const { data } = await supabase.from("isletme_arac_asimi_view").select("*");
-      return (data ?? []).map((row) => ({
-        businessName: (row.isletme_ad ?? "İşletme").replace(" Orman İşletmesi", ""),
-        totalVehicles: Number(row.isletme_toplam_arac ?? 0),
-        usedVehicles: Number(row.yanginda_kullanilan_arac ?? 0),
-        excess: Number(row.arac_asimi ?? 0),
-      }));
+      // Get isletme_arac data (mevcut araç sayısı)
+      const [isletmeRes, isletmeAracRes, aracRes] = await Promise.all([
+        supabase.from("isletme").select("isletme_id, isletme_ad"),
+        supabase.from("isletme_arac").select("isletme_id, arac_tur_id, adet"),
+        supabase.from("arac").select("arac_tur_id, arac_tur_adi"),
+      ]);
+
+      const isletmeler = isletmeRes.data ?? [];
+      const isletmeAraclar = isletmeAracRes.data ?? [];
+      const aracTurleri = aracRes.data ?? [];
+
+      // Calculate total vehicles per business from isletme_arac
+      return isletmeler.map((isletme) => {
+        const businessAraclar = isletmeAraclar.filter(
+          (a) => a.isletme_id === isletme.isletme_id
+        );
+        const totalVehicles = businessAraclar.reduce(
+          (sum, a) => sum + Number(a.adet ?? 0),
+          0
+        );
+
+        return {
+          businessName: (isletme.isletme_ad ?? "İşletme").replace(" Orman İşletmesi", ""),
+          totalVehicles,
+          usedVehicles: 0,
+          excess: 0,
+        };
+      });
+    },
+  });
+
+export const useVehicleTypeData = () =>
+  useQuery({
+    queryKey: ["vehicle-type-data"],
+    queryFn: async (): Promise<VehicleTypeData[]> => {
+      // Get all necessary data
+      const [isletmeAracRes, aracRes, yanginArac2023, yanginArac2024, yanginArac2025] = await Promise.all([
+        supabase.from("isletme_arac").select("isletme_id, arac_tur_id, adet"),
+        supabase.from("arac").select("arac_tur_id, arac_tur_adi"),
+        supabase.from("yangin_arac_2023").select("arac_tur_id, adet"),
+        supabase.from("yangin_arac_2024").select("arac_tur_id, adet"),
+        supabase.from("yangin_arac_2025").select("arac_tur_id, adet"),
+      ]);
+
+      const isletmeAraclar = isletmeAracRes.data ?? [];
+      const aracTurleri = aracRes.data ?? [];
+      const allYanginArac = [
+        ...(yanginArac2023.data ?? []),
+        ...(yanginArac2024.data ?? []),
+        ...(yanginArac2025.data ?? []),
+      ];
+
+      // Aggregate by vehicle type
+      return aracTurleri.map((aracTur) => {
+        const mevcut = isletmeAraclar
+          .filter((a) => a.arac_tur_id === aracTur.arac_tur_id)
+          .reduce((sum, a) => sum + Number(a.adet ?? 0), 0);
+
+        const kullanilan = allYanginArac
+          .filter((a) => a.arac_tur_id === aracTur.arac_tur_id)
+          .reduce((sum, a) => sum + Number(a.adet ?? 0), 0);
+
+        const asim = Math.max(0, kullanilan - mevcut);
+
+        return {
+          vehicleType: aracTur.arac_tur_adi ?? "Bilinmiyor",
+          mevcut,
+          kullanilan,
+          asim,
+        };
+      }).filter((v) => v.mevcut > 0 || v.kullanilan > 0);
     },
   });
 
