@@ -1,4 +1,5 @@
 import VehicleChart from './charts/VehicleChart';
+import BusinessVehicleExcessChart from './charts/BusinessVehicleExcessChart';
 import DangerRankingChart from './charts/DangerRankingChart';
 import MonthlyFireChart from './charts/MonthlyFireChart';
 import TreeTypeChart from './charts/TreeTypeChart';
@@ -60,6 +61,7 @@ const Dashboard = ({
       {/* Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <VehicleChart />
+        <BusinessVehicleExcessChart />
         <DangerRankingChart />
         <MonthlyFireChart business={business} selectedYear={selectedYear} />
         <TreeTypeChart business={business} />
